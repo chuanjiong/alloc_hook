@@ -82,30 +82,35 @@ static void add_trace(void *ptr, size_t size)
 {
     if (ptr == nullptr || size <= 0)
         return;
-    std::lock_guard<std::mutex> lock(trace_mutex);
-    if (!trace_flag)
-        return;
-    alloc_block++;
-    trace_flag = false;
+    {
+        std::lock_guard<std::mutex> lock(trace_mutex);
+        if (!trace_flag)
+            return;
+        alloc_block++;
+        trace_flag = false;
+    }
     void *call_traces[TRACE_LAYER] = {0};
     int layer = backtrace(call_traces, TRACE_LAYER);
-    trace_flag = true;
-    for (int i=0; i<TRACE_COUNT; i++) {
-        if (trace_alloc[i].use) {
-            if (is_traces_equal(call_traces, trace_alloc[i].call_traces, layer)) {
-                trace_alloc[i].call_times++;
-                return;
+    {
+        std::lock_guard<std::mutex> lock(trace_mutex);
+        trace_flag = true;
+        for (int i=0; i<TRACE_COUNT; i++) {
+            if (trace_alloc[i].use) {
+                if (is_traces_equal(call_traces, trace_alloc[i].call_traces, layer)) {
+                    trace_alloc[i].call_times++;
+                    return;
+                }
             }
         }
-    }
-    for (int i=0; i<TRACE_COUNT; i++) {
-        if (!trace_alloc[i].use) {
-            trace_alloc[i].use = true;
-            trace_alloc[i].call_times++;
-            trace_alloc[i].layer = layer;
-            for (int j=0; j<layer; j++)
-                trace_alloc[i].call_traces[j] = call_traces[j];
-            return;
+        for (int i=0; i<TRACE_COUNT; i++) {
+            if (!trace_alloc[i].use) {
+                trace_alloc[i].use = true;
+                trace_alloc[i].call_times++;
+                trace_alloc[i].layer = layer;
+                for (int j=0; j<layer; j++)
+                    trace_alloc[i].call_traces[j] = call_traces[j];
+                return;
+            }
         }
     }
     DBG("trace alloc count %d not enough\n", TRACE_COUNT);
@@ -115,30 +120,35 @@ static void del_trace(void *ptr)
 {
     if (ptr == nullptr)
         return;
-    std::lock_guard<std::mutex> lock(trace_mutex);
-    if (!trace_flag)
-        return;
-    alloc_block--;
-    trace_flag = false;
+    {
+        std::lock_guard<std::mutex> lock(trace_mutex);
+        if (!trace_flag)
+            return;
+        alloc_block--;
+        trace_flag = false;
+    }
     void *call_traces[TRACE_LAYER] = {0};
     int layer = backtrace(call_traces, TRACE_LAYER);
-    trace_flag = true;
-    for (int i=0; i<TRACE_COUNT; i++) {
-        if (trace_free[i].use) {
-            if (is_traces_equal(call_traces, trace_free[i].call_traces, layer)) {
-                trace_free[i].call_times++;
-                return;
+    {
+        std::lock_guard<std::mutex> lock(trace_mutex);
+        trace_flag = true;
+        for (int i=0; i<TRACE_COUNT; i++) {
+            if (trace_free[i].use) {
+                if (is_traces_equal(call_traces, trace_free[i].call_traces, layer)) {
+                    trace_free[i].call_times++;
+                    return;
+                }
             }
         }
-    }
-    for (int i=0; i<TRACE_COUNT; i++) {
-        if (!trace_free[i].use) {
-            trace_free[i].use = true;
-            trace_free[i].call_times++;
-            trace_free[i].layer = layer;
-            for (int j=0; j<layer; j++)
-                trace_free[i].call_traces[j] = call_traces[j];
-            return;
+        for (int i=0; i<TRACE_COUNT; i++) {
+            if (!trace_free[i].use) {
+                trace_free[i].use = true;
+                trace_free[i].call_times++;
+                trace_free[i].layer = layer;
+                for (int j=0; j<layer; j++)
+                    trace_free[i].call_traces[j] = call_traces[j];
+                return;
+            }
         }
     }
     DBG("trace free count %d not enough\n", TRACE_COUNT);
